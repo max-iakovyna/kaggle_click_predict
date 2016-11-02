@@ -1,8 +1,6 @@
 DROP MATERIALIZED VIEW clicks_subsample;
 DROP MATERIALIZED VIEW topics_view;
 DROP MATERIALIZED VIEW categories_view;
-DROP MATERIALIZED VIEW train_set;
-DROP MATERIALIZED VIEW countries_view;
 
 CREATE MATERIALIZED VIEW clicks_subsample AS (
 	SELECT * FROM clicks_train LIMIT 1000000  
@@ -21,13 +19,15 @@ CREATE MATERIALIZED VIEW categories_view AS (
 );
 CREATE INDEX ON categories_view (document_id);
 
+DROP MATERIALIZED VIEW countries_view;
 CREATE MATERIALIZED VIEW countries_view AS (
 	SELECT 
+		row_number() OVER () as index,
 		split_part(events.geo_location, '>', 1) as state
 	FROM events
 	GROUP BY 
 		split_part(events.geo_location, '>', 1)
-	ORDER BY state ASC 
+	ORDER BY index ASC 
 )
 ;
 CREATE UNIQUE INDEX ON countries_view (state);
@@ -36,19 +36,21 @@ CREATE UNIQUE INDEX ON countries_view (state);
 DROP MATERIALIZED VIEW provinces_view;
 CREATE MATERIALIZED VIEW provinces_view AS (
 	SELECT 
+		row_number() OVER () as index,
 		split_part(events.geo_location, '>', 2) as province
 	FROM events
 	GROUP BY 
 		split_part(events.geo_location, '>', 2)
-	ORDER BY province ASC
+	ORDER BY index ASC
 )
 ;
 CREATE UNIQUE INDEX ON provinces_view (province);
 	
-
+DROP MATERIALIZED VIEW train_set;
 CREATE MATERIALIZED VIEW train_set AS ( 
   SELECT 
   	
+  	ck.display_id,
 	ck.clicked as clicked,
 	
 	events.platform as platform,
@@ -58,8 +60,8 @@ CREATE MATERIALIZED VIEW train_set AS (
 	
 	events.timestamp as ts,
 	
-	split_part(events.geo_location, '>', 1) as state,
-	split_part(events.geo_location, '>', 2) as province,
+	countries_view.index as state,
+	provinces_view.index as province,
 	split_part(events.geo_location, '>', 3) as addr,
 	
 	promoted_content.advertiser_id as advertiser,
@@ -74,6 +76,18 @@ CREATE MATERIALIZED VIEW train_set AS (
 	JOIN promoted_content ON (promoted_content.ad_id = ck.ad_id)
 	JOIN topics_view ON (events.document_id = topics_view.document_id)
 	JOIN categories_view ON (events.document_id = categories_view.document_id)
+	JOIN countries_view ON (split_part(events.geo_location, '>', 1) = countries_view.state)
+	JOIN provinces_view ON (split_part(events.geo_location, '>', 2) = provinces_view.province)
 )
 ;
 
+
+select max(category_id) from (
+select category_id from documents_categories group by category_id
+) s
+
+select max(l) from ( select advertiser_id as l from promoted_content group by advertiser_id) as d
+
+SELECT count(*) FROM train_set
+
+SELECT count(*) FROM train_set;
